@@ -1,0 +1,3 @@
+﻿<Project>
+  <Import Project="..\build\SportLight.API.props" />
+</Project>
