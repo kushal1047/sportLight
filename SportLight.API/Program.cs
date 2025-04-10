@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SportLight.API.Data;
+using SportLight.API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,10 +23,13 @@ builder.Services.AddCors(options =>
         });
 });
 
-// Add Entity Framework with MySQL
+// Add Entity Framework with SQLite for development
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseMySql(connectionString, ServerVersion.AutoDetect(connectionString)));
+    options.UseSqlite(connectionString));
+
+// Register JWT Service
+builder.Services.AddScoped<JwtService>();
 
 var app = builder.Build();
 
