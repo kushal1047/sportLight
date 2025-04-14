@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using SportLight.API.Data;
 using SportLight.API.DTOs;
 using SportLight.API.Models;
-using Microsoft.EntityFrameworkCore;
 
 namespace SportLight.API.Controllers
 {
@@ -17,47 +17,6 @@ namespace SportLight.API.Controllers
             _context = context;
         }
 
-        [HttpGet]
-        public async Task<ActionResult<ApiResponse<List<User>>>> GetUsers(
-            [FromQuery] string? skillLevel = null,
-            [FromQuery] string? sport = null,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10)
-        {
-            try
-            {
-                var query = _context.Users.AsQueryable();
-
-                if (!string.IsNullOrEmpty(skillLevel))
-                    query = query.Where(u => u.SkillLevel == skillLevel);
-
-                if (!string.IsNullOrEmpty(sport))
-                    query = query.Where(u => u.SportsInterests.Contains(sport));
-
-                var totalCount = await query.CountAsync();
-                var users = await query
-                    .OrderByDescending(u => u.CreatedAt)
-                    .Skip((page - 1) * pageSize)
-                    .Take(pageSize)
-                    .ToListAsync();
-
-                return Ok(new ApiResponse<List<User>>
-                {
-                    Success = true,
-                    Data = users,
-                    Message = $"Retrieved {users.Count} users"
-                });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new ApiResponse<List<User>>
-                {
-                    Success = false,
-                    Error = "An error occurred while retrieving users"
-                });
-            }
-        }
-
         [HttpGet("{id}")]
         public async Task<ActionResult<ApiResponse<User>>> GetUser(string id)
         {
@@ -65,8 +24,6 @@ namespace SportLight.API.Controllers
             {
                 var user = await _context.Users
                     .Include(u => u.Skills)
-                    .Include(u => u.InstructorSessions)
-                    .Include(u => u.StudentSessions)
                     .FirstOrDefaultAsync(u => u.Id == id);
 
                 if (user == null)
@@ -89,39 +46,36 @@ namespace SportLight.API.Controllers
                 return StatusCode(500, new ApiResponse<User>
                 {
                     Success = false,
-                    Error = "An error occurred while retrieving the user"
+                    Error = "An error occurred while retrieving user"
                 });
             }
         }
 
-        [HttpGet("instructors")]
-        public async Task<ActionResult<ApiResponse<List<User>>>> GetInstructors(
-            [FromQuery] string? sport = null,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10)
+        [HttpGet]
+        public async Task<ActionResult<ApiResponse<List<User>>>> GetUsers([FromQuery] string? sport = null, [FromQuery] string? skillLevel = null)
         {
             try
             {
-                var query = _context.Users
-                    .Where(u => u.Skills.Any(s => s.IsPublished))
-                    .Include(u => u.Skills.Where(s => s.IsPublished))
-                    .AsQueryable();
+                var query = _context.Users.AsQueryable();
 
                 if (!string.IsNullOrEmpty(sport))
-                    query = query.Where(u => u.Skills.Any(s => s.Sport == sport && s.IsPublished));
+                {
+                    query = query.Where(u => u.SportsInterests.Contains(sport));
+                }
 
-                var totalCount = await query.CountAsync();
-                var instructors = await query
-                    .OrderByDescending(u => u.Skills.Count)
-                    .Skip((page - 1) * pageSize)
-                    .Take(pageSize)
+                if (!string.IsNullOrEmpty(skillLevel))
+                {
+                    query = query.Where(u => u.SkillLevel == skillLevel);
+                }
+
+                var users = await query
+                    .Include(u => u.Skills.Where(s => s.IsPublished))
                     .ToListAsync();
 
                 return Ok(new ApiResponse<List<User>>
                 {
                     Success = true,
-                    Data = instructors,
-                    Message = $"Retrieved {instructors.Count} instructors"
+                    Data = users
                 });
             }
             catch (Exception ex)
@@ -129,35 +83,75 @@ namespace SportLight.API.Controllers
                 return StatusCode(500, new ApiResponse<List<User>>
                 {
                     Success = false,
-                    Error = "An error occurred while retrieving instructors"
+                    Error = "An error occurred while retrieving users"
                 });
             }
         }
 
-        [HttpGet("skill-levels")]
-        public async Task<ActionResult<ApiResponse<List<string>>>> GetSkillLevels()
+        [HttpPut("{id}")]
+        public async Task<ActionResult<ApiResponse<User>>> UpdateUser(string id, [FromBody] UpdateUserRequest request)
         {
             try
             {
-                var skillLevels = await _context.Users
-                    .Select(u => u.SkillLevel)
-                    .Distinct()
-                    .ToListAsync();
+                var user = await _context.Users.FindAsync(id);
 
-                return Ok(new ApiResponse<List<string>>
+                if (user == null)
+                {
+                    return NotFound(new ApiResponse<User>
+                    {
+                        Success = false,
+                        Error = "User not found"
+                    });
+                }
+
+                // Update user properties
+                if (!string.IsNullOrEmpty(request.FirstName))
+                    user.FirstName = request.FirstName;
+                
+                if (!string.IsNullOrEmpty(request.LastName))
+                    user.LastName = request.LastName;
+                
+                if (!string.IsNullOrEmpty(request.Bio))
+                    user.Bio = request.Bio;
+                
+                if (!string.IsNullOrEmpty(request.SkillLevel))
+                    user.SkillLevel = request.SkillLevel;
+                
+                if (!string.IsNullOrEmpty(request.SportsInterests))
+                    user.SportsInterests = request.SportsInterests;
+                
+                if (!string.IsNullOrEmpty(request.Avatar))
+                    user.Avatar = request.Avatar;
+
+                user.UpdatedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new ApiResponse<User>
                 {
                     Success = true,
-                    Data = skillLevels
+                    Data = user,
+                    Message = "User updated successfully"
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new ApiResponse<List<string>>
+                return StatusCode(500, new ApiResponse<User>
                 {
                     Success = false,
-                    Error = "An error occurred while retrieving skill levels"
+                    Error = "An error occurred while updating user"
                 });
             }
         }
+    }
+
+    public class UpdateUserRequest
+    {
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? Bio { get; set; }
+        public string? SkillLevel { get; set; }
+        public string? SportsInterests { get; set; }
+        public string? Avatar { get; set; }
     }
 } 
